@@ -1,0 +1,7 @@
+[package]
+name = "packing_spectral"
+version = "0.1.0"
+authors = ["Timothy Middlemas <tm17@princeton.edu>"]
+edition = "2018"
+
+[dependencies]
