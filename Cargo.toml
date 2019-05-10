@@ -5,3 +5,6 @@ authors = ["Timothy Middlemas <tm17@princeton.edu>"]
 edition = "2018"
 
 [dependencies]
+rayon = "1.0"
+chrono = "0.4"
+structopt = "0.2"
