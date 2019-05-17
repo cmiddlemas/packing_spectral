@@ -1,0 +1,26 @@
+#!/usr/bin/env python3
+"""
+Script to take angular averages of the spectral density/
+structure factor by binning
+
+usage: ./angular_average [n_bins] [infile]
+
+output: the angularly averaged structure factor on stdout
+with format:
+k S(k)
+k is taken at the midpoint
+
+options:
+    --help : print this info
+"""
+
+import sys
+
+if __name__ == "__main__":
+    for entry in sys.argv:
+        if entry == "--help":
+            print(__doc__)
+            sys.exit()
+    n_bins = int(sys.argv[1])
+    infile = open(sys.argv[2])
+

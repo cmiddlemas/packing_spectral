@@ -1,7 +1,9 @@
 use packing_spectral::*;
+use chrono::prelude::*;
 
 fn main() {
-    println!("Hello, world!");
     let opt = Opt::from_args();
-    spectral_density(&opt);    
+    println!("Beginning calculation at: {}", Utc::now());
+    spectral_density(&opt);
+    println!("Exiting successfully at time: {}", Utc::now());
 }

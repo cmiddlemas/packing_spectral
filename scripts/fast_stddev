@@ -1,0 +1,32 @@
+#!/usr/bin/env python3
+import sys
+import math
+
+if __name__ == "__main__":
+    # Compute mean
+    infile = open(sys.argv[1])
+    for i in range(4):
+        infile.readline()
+    acc = 0.0
+    n = 0.0
+    for line in infile:
+        tokens = line.split()
+        acc += float(tokens[3])
+        n += 1.0
+    mean = acc/n
+
+    # Compute stddev
+    infile = open(sys.argv[1])
+    for i in range(4):
+        infile.readline()
+    acc = 0.0
+    for line in infile:
+        tokens = line.split()
+        acc += (float(tokens[3]) - mean)**2.0
+    acc /= (n - 1.0)
+    print("Mean: " + str(mean))
+    print("Std dev: " + str(math.sqrt(acc)))
+    print("Std err: " + str(math.sqrt(acc)/math.sqrt(n)))
+
+
+
