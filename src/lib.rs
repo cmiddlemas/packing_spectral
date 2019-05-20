@@ -1,9 +1,9 @@
-pub use structopt::StructOpt;
+use structopt::StructOpt;
 use rayon::prelude::*;
 use std::path::PathBuf;
 use std::fs::File;
 use std::io::{Read, BufRead, BufReader, Write, BufWriter};
-use nalgebra::{Matrix3, LU};
+use nalgebra::{Matrix3, Vector3};
 
 //Value from Mathematica 11.2.0.0
 const PI: f64 = 3.141592653589793;
@@ -33,6 +33,10 @@ pub struct Opt {
     #[structopt(short = "s", long = "structure")]
     pub compute_structure_factor: bool,
 
+    /// Turns of parallelism and runs timing output
+    #[structopt(short = "t", long = "timing")]
+    pub run_timing: bool,
+
     /// Input filenames, files must follow Donev convention
     /// and be mutually compatible (i.e. same dimension,
     /// unit cells, and number of spheres)
@@ -41,16 +45,26 @@ pub struct Opt {
 }
 
 #[derive(Debug)]
-struct Config {
-    dim: usize,
-    n_points: usize,
+pub struct Config {
+    pub dim: usize,
+    pub n_points: usize,
     // Coordinates + radius, flat storage:
     // x1 y1 z1 R1 x2 y2 z2 R2 ...
-    config: Vec<f64>,
+    pub config: Vec<f64>,
     // Unit cell, flat storage:
     // u11 u12 u13 u21 u22 u23 ...
-    unit_cell: Vec<f64>,
-    reciprocal_cell: Vec<f64>,
+    pub unit_cell: Vec<f64>,
+    pub vol: f64,
+    pub reciprocal_cell: Vec<f64>,
+}
+
+// Triple product algorithm, see Wikipedia
+fn volume3(uc: &Vec<f64>) -> f64
+{
+    let v1 = Vector3::new(uc[0], uc[1], uc[2]);
+    let v2 = Vector3::new(uc[3], uc[4], uc[5]);
+    let v3 = Vector3::new(uc[6], uc[7], uc[8]);
+    v1.dot(&v2.cross(&v3))
 }
 
 impl Config {
@@ -91,10 +105,17 @@ impl Config {
                                 )
                             .collect();
 
+        // Compute volume
+        let vol = match dim {
+            3 => volume3(&unit_cell),
+            _ => panic!("Not implemented for this dim"),
+        };
+        
         // Make reciprocal cell
-        let reciprocal_cell = reciprocal_lattice3(
-                &unit_cell
-        );
+        let reciprocal_cell = match dim {
+            3 => reciprocal_lattice3(&unit_cell),
+            _ => panic!("Not implemented for this dim"),
+        };
         
         // Get config
         bufr.read_line(&mut bufs).expect("io line error");
@@ -112,7 +133,7 @@ impl Config {
         assert!(config.len() == (dim+1)*n_points);
         assert!(unit_cell.len() == dim*dim);
 
-        Config {dim, n_points, config, unit_cell, reciprocal_cell} 
+        Config {dim, n_points, config, unit_cell, vol, reciprocal_cell} 
     }
 }
 
@@ -157,17 +178,31 @@ fn make_support3(q_lat: &Vec<f64>, max_idx: usize)
 // Reference:
 // Zachary et. al. PRE 83, 051308 (2011)
 // and Mathematica 11.2.0.0
+// Also notes for Lecture 1 of CHM 510, by S. Torquato
 fn form_factor3(q: f64, r: f64) -> f64 {
-    0.0
+    4.0*PI*((q*r).sin() - q*r*(q*r).cos())/(q*q*q)
 }
 
-fn one_wavevector3(q: (f64, f64, f64),
+fn one_wavevector3(q: &(f64, f64, f64),
                    val: &mut f64,
                    config: &Config)
 {
+    //println!("Working on wavevector: {:?}", q);
+    let mut real: f64 = 0.0;
+    let mut imag: f64 = 0.0;
+    let q_amp = (q.0*q.0 + q.1*q.1 + q.2*q.2).sqrt();
+    
+    for p in config.config.chunks(4) {
+        let dot = -(q.0*p[0] + q.1*p[1] + q.2*p[2]);
+        let m = form_factor3( q_amp, p[3] );
+        real += m*dot.cos();
+        imag += m*dot.sin();
+    }
+    
+    *val += (real*real + imag*imag)/(config.vol);
 }
 
-fn sf_one_wavevector3(q: (f64, f64, f64),
+fn sf_one_wavevector3(q: &(f64, f64, f64),
                       val: &mut f64,
                    config: &Config)
 {
@@ -187,12 +222,36 @@ fn one_configuration3(config: &Config,
                      support: &[(f64, f64, f64)],
                      opt: &Opt)
 {
-    if opt.compute_structure_factor {
-        support.par_iter().zip(spectral_density.par_iter_mut())
-            .for_each(|(q, val)| sf_one_wavevector3(*q, val, &config));
+    if opt.run_timing {
+        if opt.compute_structure_factor {
+            for (i, (q, val)) in support.iter()
+                .zip(spectral_density.iter_mut())
+                .enumerate() 
+            {
+                if i%1000 == 0 {
+                    println!("working on iteration {}", i);
+                }
+                sf_one_wavevector3(q, val, config);
+            }
+        } else {
+            for (i, (q, val)) in support.iter()
+                .zip(spectral_density.iter_mut())
+                .enumerate() 
+            {
+                if i%1000 == 0 {
+                    println!("working on iteration {}", i);
+                }
+                one_wavevector3(q, val, config);
+            }
+        }
     } else {
-        support.par_iter().zip(spectral_density.par_iter_mut())
-            .for_each(|(q, val)| one_wavevector3(*q, val, &config));
+        if opt.compute_structure_factor {
+            support.par_iter().zip(spectral_density.par_iter_mut())
+                .for_each(|(q, val)| sf_one_wavevector3(q, val, config));
+        } else {
+            support.par_iter().zip(spectral_density.par_iter_mut())
+                .for_each(|(q, val)| one_wavevector3(q, val, config));
+        }
     }
 }
 
@@ -244,7 +303,7 @@ fn write_results3(config: &Config,
     }
 }
 
-pub fn spectral_density(opt: &Opt) {
+pub fn spectral_density_cmdline(opt: &Opt) {
     let first_config = Config::from_file(&opt.infiles[0]);
     match first_config.dim {
         3 => {

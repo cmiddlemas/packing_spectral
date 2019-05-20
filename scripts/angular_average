@@ -3,7 +3,7 @@
 Script to take angular averages of the spectral density/
 structure factor by binning
 
-usage: ./angular_average [n_bins] [infile]
+usage: ./angular_average [k_max] [n_bins] [infile]
 
 output: the angularly averaged structure factor on stdout
 with format:
@@ -21,6 +21,8 @@ if __name__ == "__main__":
         if entry == "--help":
             print(__doc__)
             sys.exit()
-    n_bins = int(sys.argv[1])
-    infile = open(sys.argv[2])
+    k_max = float(sys.argv[1])
+    n_bins = int(sys.argv[2])
+    infile = open(sys.argv[3])
+
 
