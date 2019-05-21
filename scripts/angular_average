@@ -15,6 +15,7 @@ options:
 
 import sys
 import numpy as np
+import math
 
 if __name__ == "__main__":
     for entry in sys.argv:
@@ -45,7 +46,7 @@ if __name__ == "__main__":
 
     norms.remove(0.0)
     
-    min_norm = d_norm*min(norms)
+    min_norm = d_norm*min(norms)/(2.0*math.pi)
 
     print("Can compute up to: " + str(max_vec*min_norm))
 
@@ -63,7 +64,7 @@ if __name__ == "__main__":
         if i%1000 == 0:
             print(i)
         array = [float(x) for x in line.split()]
-        k = np.linalg.norm(np.array(array[0:3]))*d_norm
+        k = np.linalg.norm(np.array(array[0:3]))*d_norm/(2.0*math.pi)
         if k < 0.001*min_norm: # exclude forward scattering
             continue
         index = int(k/k_step)
