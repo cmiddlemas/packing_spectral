@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
     # Now bin rest of data
     for i, line in enumerate(infile):
-        if i%1000 == 0:
+        if i%100000 == 0:
             print(i)
         array = [float(x) for x in line.split()]
         k = np.linalg.norm(np.array(array[0:3]))*d_norm/(2.0*math.pi)
