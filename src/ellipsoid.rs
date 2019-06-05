@@ -110,7 +110,7 @@ impl EllipsoidConfig<U3> {
 // t: [a b c d a_x a_y a_z] (quaternion + axes)
 fn ellipsoid_factor(q: &[f64], t: &[f64]) -> f64 {
     let quat: UnitQuaternion<f64> = UnitQuaternion::from_quaternion(
-                            Quaternion::new(t[1], t[2], t[3], t[0])
+                            Quaternion::new(t[0], t[1], t[2], t[3])
     );
     let point_q: Point3<f64> = Point3::new(q[0], q[1], q[2]);
     let rotate_q = quat.inverse_transform_point(&point_q);
@@ -197,9 +197,44 @@ mod tests{
     fn test_ellipsoid_factor2() {
         let val = ellipsoid_factor(
             &[1.0, 0.0, 0.0],
-            &[0.3826834323650898, 0.0, 0.9238795325112867, 0.0, 2.0, 1.0, 0.5]
+            &[0.9238795325112867, 0.0, 0.3826834323650898, 0.0, 2.0, 1.0, 0.5]
         );
         if (val - 0.496305).abs() > 0.00001 {
+            println!("{}", val);
+            panic!()
+        }
+    }
+
+    #[test]
+    fn test_ellipsoid_factor3() {
+        let val = ellipsoid_factor(
+            &[1.0, 0.0, 1.0],
+            &[0.9659258262890682, 0.0, 0.2588190451025207, 0.0, 2.0, 1.0, 0.5]
+        );
+        if (val - 0.510594).abs() > 0.00001 {
+            println!("{}", val);
+            panic!()
+        }
+    }
+    #[test]
+    fn test_ellipsoid_factor4() {
+        let val = ellipsoid_factor(
+            &[3.0, 2.0, 1.0],
+            &[0.9659258262890682, 0.0, 0.2588190451025207, 0.0, 2.0, 1.0, 0.5]
+        );
+        if (val - 0.278123).abs() > 0.00001 {
+            println!("{}", val);
+            panic!()
+        }
+    }
+
+    #[test]
+    fn test_ellipsoid_factor5() {
+        let val = ellipsoid_factor(
+            &[-3.0, 2.0, 5.0],
+            &[0.9510565162951535, 0.30901699437494745, 0.0, 0.0, 2.0, 1.0, 0.5]
+        );
+        if (val - 0.0643571).abs() > 0.000001 {
             println!("{}", val);
             panic!()
         }
