@@ -76,7 +76,7 @@ fn volume3(uc: &[f64]) -> f64
     let v1 = Vector3::new(uc[0], uc[1], uc[2]);
     let v2 = Vector3::new(uc[3], uc[4], uc[5]);
     let v3 = Vector3::new(uc[6], uc[7], uc[8]);
-    v1.dot(&v2.cross(&v3))
+    (v1.dot(&v2.cross(&v3))).abs()
 }
 
 // Reciprocal lattice is computed as
