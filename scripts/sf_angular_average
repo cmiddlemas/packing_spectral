@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""
+Script to take angular averages of the structure factor by binning
+
+usage: ./angular_average [k_max] [n_bins] [infile] [outfile]
+
+output: the angularly averaged spectral density on stdout
+with format:
+S(k)
+k is taken at the midpoint
+
+options:
+    --help : print this info
+"""
+
+import sys
+import numpy as np
+import math
+
+if __name__ == "__main__":
+    for entry in sys.argv:
+        if entry == "--help":
+            print(__doc__)
+            sys.exit()
+    k_max = float(sys.argv[1])
+    n_bins = int(sys.argv[2])
+    infile = open(sys.argv[3])
+
+    max_vec = float(infile.readline())
+
+    # Consistency check for input k_max
+    unit_cell = []
+    for i in range(3):
+        array = [float(x) for x in  infile.readline().split()]
+        unit_cell.append(np.array(array))
+    
+    norms = [np.linalg.norm(
+                    i*unit_cell[0] 
+                    + j*unit_cell[1] 
+                    + k*unit_cell[2]
+                )
+    for i in range(-1,2)
+    for j in range(-1,2)
+    for k in range(-1,2)]
+
+    norms.remove(0.0)
+    
+    min_norm = min(norms)
+
+    print("Can compute up to: " + str(max_vec*min_norm))
+
+    if max_vec*min_norm < k_max:
+        print("Cannot continue, use smaller k_max")
+        sys.exit(1)
+    
+    chi = np.zeros(n_bins)
+    samples = np.zeros(n_bins)
+    k_step = k_max/float(n_bins)
+    k_domain = np.array([(x + 0.5)*k_step for x in range(n_bins)])
+
+    # Now bin rest of data
+    for i, line in enumerate(infile):
+        if i%100000 == 0:
+            print(i)
+        array = [float(x) for x in line.split()]
+        k = np.linalg.norm(np.array(array[0:3]))
+        if k < 0.001*min_norm: # exclude forward scattering
+            continue
+        index = int(k/k_step)
+        if index < n_bins:
+            chi[index] += array[3]
+            samples[index] += 1.0
+    # normalize spectral density
+    chi /= samples
+
+    # Write out
+    np.savetxt(sys.argv[4],
+            np.transpose(np.array([k_domain, chi])))
+

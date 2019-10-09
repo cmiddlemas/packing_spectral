@@ -168,16 +168,6 @@ fn one_configuration(
                 .for_each(|(q, val)| config.one_wavevector(q, val));
         }    
     }
-    // Normalize
-    if opt.compute_structure_factor {
-        for val in spectral_density {
-            *val /= config.get_n_points() as f64;
-        }
-    } else {
-        for val in spectral_density {
-            *val /= config.get_vol();
-        }
-    }
 }
 
 fn write_results(
@@ -278,6 +268,18 @@ pub fn spectral_density_cmdline(opt: &Opt) {
         );
     }
     
+    // Normalize by extensiveness of the system
+    if opt.compute_structure_factor {
+        for val in &mut spectral_density {
+            *val /= first_config.get_n_points() as f64;
+        }
+    } else {
+        for val in &mut spectral_density {
+            *val /= first_config.get_vol();
+        }
+    }
+
+
     // Normalize by number of realizations
     let n_ens = opt.infiles.len() as f64;
     for val in &mut spectral_density {
