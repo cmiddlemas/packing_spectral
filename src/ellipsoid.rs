@@ -49,12 +49,13 @@ impl EllipsoidConfig<U3> {
         // Get ellipsoid axes
         bufs.clear();
         bufr.read_line(&mut bufs).expect("io line error");
-        let axes: Vec<f64> = bufs.split_whitespace()
+        let mut axes: Vec<f64> = bufs.split_whitespace()
                                 .map(|x| x.parse()
                                     .expect("Parse ellipsoid axes failed")
                                 )
                                 .collect()
         ;
+        axes.resize(3, 0.0);
 
         // Get unit cell
         bufs.clear();
