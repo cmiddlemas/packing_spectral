@@ -88,8 +88,7 @@ fn reciprocal_lattice3(unit_cell: &[f64])
     let q = 2.0*PI
         *u.lu()
         .try_inverse()
-        .expect("unit cell matrix must be invertible")
-        .transpose();
+        .expect("unit cell matrix must be invertible");
     Vec::from(q.as_slice())
 }
 

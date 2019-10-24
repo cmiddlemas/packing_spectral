@@ -6,7 +6,7 @@ usage: ./angular_average [k_max * d_norm] [n_bins] [d_norm] [infile] [outfile]
 
 output: the angularly averaged spectral density on stdout
 with format:
-kd chi(kd)/d^2
+kd chi(kd)/d^3
 k is taken at the midpoint
 
 options:
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
     norms.remove(0.0)
     
-    min_norm = d_norm*min(norms)/(2.0*math.pi)
+    min_norm = d_norm*min(norms)
 
     print("Can compute up to: " + str(max_vec*min_norm))
 
@@ -64,7 +64,7 @@ if __name__ == "__main__":
         if i%100000 == 0:
             print(i)
         array = [float(x) for x in line.split()]
-        k = np.linalg.norm(np.array(array[0:3]))*d_norm/(2.0*math.pi)
+        k = np.linalg.norm(np.array(array[0:3]))*d_norm
         if k < 0.001*min_norm: # exclude forward scattering
             continue
         index = int(k/k_step)
@@ -72,7 +72,7 @@ if __name__ == "__main__":
             chi[index] += array[3]
             samples[index] += 1.0
     # normalize spectral density
-    chi /= samples*d_norm*d_norm
+    chi /= samples*d_norm*d_norm*d_norm
 
     # Write out
     np.savetxt(sys.argv[5],
