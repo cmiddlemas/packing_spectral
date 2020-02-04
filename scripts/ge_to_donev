@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+"""
+ge_to_donev
+
+Usage: ge_to_donev [ge_file] > [donev_file]
+
+Turns a point configuration Ge file into a sphere packing Donev file.  Will make
+radius 0.
+"""
+
+import sys
+import numpy as np
+
+if __name__ == "__main__":
+    if "--help" in sys.argv:
+        print(__doc__)
+        sys.exit(0)
+    
+    ge_file = open(sys.argv[1])
+
+    # Get data from file
+    dim = int(ge_file.readline())
+    data = np.loadtxt(ge_file)
+
+    # Parse data
+    unit_cell = data[:dim, :dim]
+    points = data[dim:, :dim]
+    n_points = len(points)
+
+    # Print in Donev format
+    print("{} HS poly".format(dim))
+    print("{} 1".format(n_points))
+    print(n_points)
+    np.savetxt(sys.stdout.buffer, unit_cell)
+    print(" ".join(["T" for i in range(dim)]))
+    np.savetxt(sys.stdout.buffer, np.insert(points, dim, 0.0, axis=1))
