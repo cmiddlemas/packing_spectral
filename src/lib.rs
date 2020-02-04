@@ -1,6 +1,6 @@
 use structopt::StructOpt;
 use std::path::PathBuf;
-use nalgebra::{Matrix3, Vector3};
+use nalgebra::{Matrix2, Vector2, Matrix3, Vector3};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write, BufWriter};
 use rayon::prelude::*;
@@ -68,7 +68,7 @@ trait Config {
     fn get_vol(&self) -> f64;
 }
 
-// 3D specific functions ------------------------------------------
+// dimension specific functions ------------------------------------------
 
 // Triple product algorithm, see Wikipedia
 fn volume3(uc: &[f64]) -> f64
@@ -79,12 +79,27 @@ fn volume3(uc: &[f64]) -> f64
     (v1.dot(&v2.cross(&v3))).abs()
 }
 
+fn volume2(uc: &[f64]) -> f64 {
+    let v1 = Vector2::new(uc[0], uc[1]);
+    let v2 = Vector2::new(uc[2], uc[3]);
+    v1.perp(&v2).abs()
+}
+
 // Reciprocal lattice is computed as
 // q = 2Pi(u^(-1))^T
 fn reciprocal_lattice3(unit_cell: &[f64])
     -> Vec<f64> 
 {
     let u = Matrix3::from_row_slice(unit_cell);
+    let q = 2.0*PI
+        *u.lu()
+        .try_inverse()
+        .expect("unit cell matrix must be invertible");
+    Vec::from(q.as_slice())
+}
+
+fn reciprocal_lattice2(unit_cell: &[f64]) -> Vec<f64> {
+    let u = Matrix2::from_row_slice(unit_cell);
     let q = 2.0*PI
         *u.lu()
         .try_inverse()
@@ -107,24 +122,39 @@ fn form_factor3(q: f64, r: f64) -> f64 {
 fn make_support(dim: usize, q_lat: &[f64], max_idx: usize)
     -> Vec<Vec<f64>> 
 {
-    if dim != 3 {
-        panic!("Haven't implemented dim != 3");
-    }
     let mut support = Vec::new();
-    let s_idx = max_idx as isize;
-    for i in -s_idx..(s_idx+1) {
-        for j in -s_idx..(s_idx+1) {
-            for k in -s_idx..(s_idx+1) {
-                let m = i as f64;
-                let n = j as f64;
-                let o = k as f64;
-                support.push(
-                    vec![m*q_lat[0] + n*q_lat[3] + o*q_lat[6],
-                     m*q_lat[1] + n*q_lat[4] + o*q_lat[7],
-                     m*q_lat[2] + n*q_lat[5] + o*q_lat[8]]
-                );
+    match dim {
+        2 => {
+            let s_idx = max_idx as isize;
+            for i in -s_idx..(s_idx+1) {
+                for j in -s_idx..(s_idx+1) {
+                    let m = i as f64;
+                    let n = j as f64;
+                    support.push(
+                        vec![m*q_lat[0] + n*q_lat[2],
+                         m*q_lat[1] + n*q_lat[3]]
+                    );
+                }
             }
         }
+        3 => {
+            let s_idx = max_idx as isize;
+            for i in -s_idx..(s_idx+1) {
+                for j in -s_idx..(s_idx+1) {
+                    for k in -s_idx..(s_idx+1) {
+                        let m = i as f64;
+                        let n = j as f64;
+                        let o = k as f64;
+                        support.push(
+                            vec![m*q_lat[0] + n*q_lat[3] + o*q_lat[6],
+                             m*q_lat[1] + n*q_lat[4] + o*q_lat[7],
+                             m*q_lat[2] + n*q_lat[5] + o*q_lat[8]]
+                        );
+                    }
+                }
+            }
+        }
+        _ => panic!("Haven't implemented that dimension!"),
     }
     return support;
 }
@@ -178,9 +208,6 @@ fn write_results(
 {
     let q_lat = config.get_reciprocal_cell();
     let dim = config.get_dimension();
-    if dim != 3 {
-        panic!("Output function not generalized to d != 3 yet");
-    }
     // See 
     // https://stackoverflow.com/questions/25278248/rust-structs-with-nullable-option-fields
     // for borrow checker discussion
@@ -197,18 +224,39 @@ fn write_results(
     };
     writeln!(&mut *out_dest, "{}", opt.max_vec)
         .expect("Couldn't write to outfile");
-    for i in 0..3 {
-        writeln!(&mut *out_dest, "{}\t{}\t{}",
-            q_lat[3*i], q_lat[3*i+1], q_lat[3*i+2])
-            .expect("Couldn't write to outfile");
-    }
-    for (q, chi) in support.iter()
-        .zip(spectral_density.iter()) 
-    {
-        writeln!(&mut *out_dest,
-                 "{}\t{}\t{}\t{}",
-                 q[0], q[1], q[2], chi)
-        .expect("Couldn't write to outfile");
+    
+    match dim {
+        2 => {
+            for i in 0..2 {
+                writeln!(&mut *out_dest, "{}\t{}",
+                    q_lat[2*i], q_lat[2*i+1])
+                    .expect("Couldn't write to outfile");
+            }
+            for (q, chi) in support.iter()
+                .zip(spectral_density.iter()) 
+            {
+                writeln!(&mut *out_dest,
+                         "{}\t{}\t{}",
+                         q[0], q[1], chi)
+                .expect("Couldn't write to outfile");
+            }
+        }
+        3 => {
+            for i in 0..3 {
+                writeln!(&mut *out_dest, "{}\t{}\t{}",
+                    q_lat[3*i], q_lat[3*i+1], q_lat[3*i+2])
+                    .expect("Couldn't write to outfile");
+            }
+            for (q, chi) in support.iter()
+                .zip(spectral_density.iter()) 
+            {
+                writeln!(&mut *out_dest,
+                         "{}\t{}\t{}\t{}",
+                         q[0], q[1], q[2], chi)
+                .expect("Couldn't write to outfile");
+            }
+        }
+        _ => panic!("Haven't implemented output for that dimension yet!"),
     }
 }
        
