@@ -33,4 +33,4 @@ if __name__ == "__main__":
     print(n_points)
     np.savetxt(sys.stdout.buffer, unit_cell)
     print(" ".join(["T" for i in range(dim)]))
-    np.savetxt(sys.stdout.buffer, np.insert(points, dim, 0.0, axis=1))
+    np.savetxt(sys.stdout, np.insert(points, dim, 0.0, axis=1))
