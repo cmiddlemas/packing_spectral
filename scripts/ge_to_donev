@@ -28,9 +28,14 @@ if __name__ == "__main__":
     n_points = len(points)
 
     # Print in Donev format
+    # https://stackoverflow.com/questions/23041516/numpy-savetxt-out-of-order-when-redirecting-sys-stdout
     print("{} HS poly".format(dim))
     print("{} 1".format(n_points))
     print(n_points)
+    sys.stdout.flush()
     np.savetxt(sys.stdout.buffer, unit_cell)
+    sys.stdout.flush()
     print(" ".join(["T" for i in range(dim)]))
-    np.savetxt(sys.stdout, np.insert(points, dim, 0.0, axis=1))
+    sys.stdout.flush()
+    np.savetxt(sys.stdout.buffer, np.insert(points, dim, 0.0, axis=1))
+    sys.stdout.flush()
