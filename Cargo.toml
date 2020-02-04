@@ -3,6 +3,15 @@ name = "packing_spectral"
 version = "0.1.0"
 authors = ["Timothy Middlemas <tm17@princeton.edu>"]
 edition = "2018"
+build = "build.rs"
+
+# https://stackoverflow.com/questions/27632660/how-do-i-use-conditional-compilation-with-cfg-and-cargo
+[features]
+using_make = []
+
+[build-dependencies]
+vergen = "3"
+rustc_version = "0.2"
 
 [dependencies]
 rayon = "1.0"
