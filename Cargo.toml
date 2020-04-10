@@ -14,8 +14,9 @@ vergen = "3"
 rustc_version = "0.2"
 
 [dependencies]
-rayon = "1.0"
+rayon = "1"
 chrono = "0.4"
 structopt = "0.2"
 nalgebra = "0.18.0"
 typenum = "1.10.0"
+itertools = "0.9"

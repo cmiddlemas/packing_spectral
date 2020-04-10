@@ -92,9 +92,9 @@ impl SphereConfig<U2> {
 impl Config for SphereConfig<U2> {
     fn get_reciprocal_cell(&self) -> &[f64] { &self.reciprocal_cell }
     
-    fn one_wavevector(&self, _q: &[f64], _val: &mut f64) {unimplemented!()}
+    fn one_wavevector(&self, _q: &[f64],) -> f64 {unimplemented!()}
     
-    fn sf_one_wavevector(&self, q: &[f64], val: &mut f64) {
+    fn sf_one_wavevector(&self, q: &[f64]) -> f64 {
         let mut real: f64 = 0.0;
         let mut imag: f64 = 0.0;
         for p in self.config.chunks_exact(3) {
@@ -102,7 +102,7 @@ impl Config for SphereConfig<U2> {
             real += dot.cos();
             imag += dot.sin();
         }
-        *val += real*real + imag*imag; 
+        real*real + imag*imag
     }
     
     fn get_dimension(&self) -> usize { U2::to_usize() }
@@ -185,9 +185,7 @@ impl Config for SphereConfig<U3> {
         &self.reciprocal_cell
     }
 
-    fn one_wavevector(&self,
-                        q: &[f64],
-                        val: &mut f64)
+    fn one_wavevector(&self, q: &[f64]) -> f64
     {
         //println!("Working on wavevector: {:?}", q);
         let mut real: f64 = 0.0;
@@ -203,12 +201,10 @@ impl Config for SphereConfig<U3> {
             imag += m*dot.sin();
         }
         
-        *val += real*real + imag*imag;
+        real*real + imag*imag
     }
 
-    fn sf_one_wavevector(&self,
-                            q: &[f64],
-                          val: &mut f64)
+    fn sf_one_wavevector(&self, q: &[f64]) -> f64
     {
         //println!("Working on wavevector: {:?}", q);
         let mut real: f64 = 0.0;
@@ -218,7 +214,7 @@ impl Config for SphereConfig<U3> {
             real += dot.cos();
             imag += dot.sin();
         }
-        *val += real*real + imag*imag;
+        real*real + imag*imag
     }
 
     fn get_dimension(&self) -> usize {

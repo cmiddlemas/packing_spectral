@@ -54,6 +54,9 @@ if __name__ == "__main__":
         sys.exit(1)
     
     chi = np.zeros(n_bins)
+    # use no spatial correlation assumption
+    # similar to, but not exactly what Ge uses
+    unc = np.zeros(n_bins)
     samples = np.zeros(n_bins)
     k_step = k_max/float(n_bins)
     k_domain = np.array([(x + 0.5)*k_step for x in range(n_bins)])
@@ -69,11 +72,15 @@ if __name__ == "__main__":
         index = int(k/k_step)
         if index < n_bins:
             chi[index] += array[3]
+            unc[index] += array[4]*array[4]
             samples[index] += 1.0
     # normalize spectral density
     chi /= samples
+    # normalize uncertainty
+    unc = np.sqrt(unc)
+    unc /= samples
 
     # Write out
     np.savetxt(sys.argv[4],
-            np.transpose(np.array([k_domain, chi])))
+            np.transpose(np.array([k_domain, chi, unc])))
 

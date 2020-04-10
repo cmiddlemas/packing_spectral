@@ -5,6 +5,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader, Write, BufWriter};
 use rayon::prelude::*;
 use typenum::{U2, U3};
+use itertools::izip;
 
 mod sphere;
 mod ellipsoid;
@@ -61,8 +62,8 @@ pub struct Opt {
 // Common methods to all configurations
 trait Config {
     fn get_reciprocal_cell(&self) -> &[f64];
-    fn one_wavevector(&self, q: &[f64], val: &mut f64);
-    fn sf_one_wavevector(&self, q: &[f64], val: &mut f64);
+    fn one_wavevector(&self, q: &[f64]) -> f64;
+    fn sf_one_wavevector(&self, q: &[f64]) -> f64;
     fn get_dimension(&self) -> usize;
     fn get_n_points(&self) -> usize;
     fn get_vol(&self) -> f64;
@@ -119,6 +120,8 @@ fn form_factor3(q: f64, r: f64) -> f64 {
 
 // Generic helper functions ---------------------------------------
 
+// After looking at Ge's code, realized that this should exclude
+// the S(k) = S(-k) symmetry for correct error bars
 fn make_support(dim: usize, q_lat: &[f64], max_idx: usize)
     -> Vec<Vec<f64>> 
 {
@@ -126,7 +129,15 @@ fn make_support(dim: usize, q_lat: &[f64], max_idx: usize)
     match dim {
         2 => {
             let s_idx = max_idx as isize;
-            for i in -s_idx..(s_idx+1) {
+            // Handle vertical half line segment out of origin
+            for j in 0..(s_idx+1) {
+                let n = j as f64;
+                support.push(
+                    vec![n*q_lat[2], n*q_lat[3]]
+                );
+            }
+            // Handle verticle full line segments offset from origin
+            for i in 1..(s_idx+1) {
                 for j in -s_idx..(s_idx+1) {
                     let m = i as f64;
                     let n = j as f64;
@@ -139,7 +150,31 @@ fn make_support(dim: usize, q_lat: &[f64], max_idx: usize)
         }
         3 => {
             let s_idx = max_idx as isize;
-            for i in -s_idx..(s_idx+1) {
+            // Handle boundary
+            // i = j = 0, half line
+            for k in 0..(s_idx+1) {
+                let o = k as f64;
+                support.push(
+                    vec![o*q_lat[6], o*q_lat[7], o*q_lat[8]]
+                );
+            }
+            
+            // i = 0, bulk of 2d plane
+            for j in 1..(s_idx+1) {
+                for k in -s_idx..(s_idx+1) {
+                    let n = j as f64;
+                    let o = k as f64;
+                    support.push(
+                        vec![n*q_lat[3] + o*q_lat[6],
+                             n*q_lat[4] + o*q_lat[7],
+                             n*q_lat[5] + o*q_lat[8]
+                        ]
+                    );
+                }
+            }
+            
+            // Handle bulk of 3d
+            for i in 1..(s_idx+1) {
                 for j in -s_idx..(s_idx+1) {
                     for k in -s_idx..(s_idx+1) {
                         let m = i as f64;
@@ -163,38 +198,57 @@ fn make_support(dim: usize, q_lat: &[f64], max_idx: usize)
 fn one_configuration(
                     config: &(dyn Config + Sync),
                      spectral_density: &mut [f64],
+                     spectral_density_squared: &mut [f64],
                      support: &[Vec<f64>],
                      opt: &Opt)
 {
     if opt.run_timing { // Don't parallelize to get a timing estimate
         if opt.compute_structure_factor {
-            for (i, (q, val)) in support.iter()
-                .zip(spectral_density.iter_mut())
-                .enumerate() 
+            for (i, q, val, val2) in izip!(0..support.len(),
+                                           support,
+                                           spectral_density,
+                                           spectral_density_squared
+                                          )
             {
                 if i%1000 == 0 {
                     println!("working on iteration {}", i);
                 }
-                config.sf_one_wavevector(q, val);
+                let s = config.sf_one_wavevector(q);
+                *val += s;
+                *val2 += s*s;
             }
         } else {
-            for (i, (q, val)) in support.iter()
-                .zip(spectral_density.iter_mut())
-                .enumerate() 
+            for (i, q, val, val2) in izip!(0..support.len(),
+                                           support,
+                                           spectral_density,
+                                           spectral_density_squared
+                                          )
             {
                 if i%1000 == 0 {
                     println!("working on iteration {}", i);
                 }
-                config.one_wavevector(q, val);
+                let s = config.one_wavevector(q);
+                *val += s;
+                *val2 += s*s;
             }
         }
     } else { // Parallelize for speed
         if opt.compute_structure_factor {
-            support.par_iter().zip(spectral_density.par_iter_mut())
-                .for_each(|(q, val)| config.sf_one_wavevector(q, val));
+            (support, spectral_density, spectral_density_squared).into_par_iter()
+                .for_each(|(q, val, val2)| {
+                        let s = config.sf_one_wavevector(q);
+                        *val += s;
+                        *val2 += s*s; 
+                    }
+                ); 
         } else {
-            support.par_iter().zip(spectral_density.par_iter_mut())
-                .for_each(|(q, val)| config.one_wavevector(q, val));
+            (support, spectral_density, spectral_density_squared).into_par_iter()
+                .for_each(|(q, val, val2)| {
+                        let s = config.one_wavevector(q);
+                        *val += s;
+                        *val2 += s*s;
+                    }
+                );
         }    
     }
 }
@@ -202,6 +256,7 @@ fn one_configuration(
 fn write_results(
                         config: &dyn Config,
                         spectral_density: &[f64],
+                        sigma: &[f64],
                         support: &[Vec<f64>],
                         opt: &Opt
 )
@@ -232,12 +287,10 @@ fn write_results(
                     q_lat[2*i], q_lat[2*i+1])
                     .expect("Couldn't write to outfile");
             }
-            for (q, chi) in support.iter()
-                .zip(spectral_density.iter()) 
-            {
+            for (q, chi, o) in izip!(support, spectral_density, sigma) {
                 writeln!(&mut *out_dest,
-                         "{}\t{}\t{}",
-                         q[0], q[1], chi)
+                         "{}\t{}\t{}\t{}",
+                         q[0], q[1], chi, o)
                 .expect("Couldn't write to outfile");
             }
         }
@@ -247,12 +300,10 @@ fn write_results(
                     q_lat[3*i], q_lat[3*i+1], q_lat[3*i+2])
                     .expect("Couldn't write to outfile");
             }
-            for (q, chi) in support.iter()
-                .zip(spectral_density.iter()) 
-            {
+            for (q, chi, o) in izip!(support, spectral_density, sigma) {
                 writeln!(&mut *out_dest,
-                         "{}\t{}\t{}\t{}",
-                         q[0], q[1], q[2], chi)
+                         "{}\t{}\t{}\t{}\t{}",
+                         q[0], q[1], q[2], chi, o)
                 .expect("Couldn't write to outfile");
             }
         }
@@ -303,6 +354,7 @@ pub fn spectral_density_cmdline(opt: &Opt) {
     );
     
     let mut spectral_density = vec![0.0; support.len()];
+    let mut spectral_density_squared = vec![0.0; support.len()];
                     
     // Ensemble sum
     for (i, path) in opt.infiles.iter().enumerate() {
@@ -310,6 +362,7 @@ pub fn spectral_density_cmdline(opt: &Opt) {
         let config = parse_config(path);
         one_configuration(&*config,
                            &mut spectral_density,
+                           &mut spectral_density_squared,
                            &support,
                            &opt
         );
@@ -317,24 +370,39 @@ pub fn spectral_density_cmdline(opt: &Opt) {
     
     // Normalize by extensiveness of the system
     if opt.compute_structure_factor {
-        for val in &mut spectral_density {
-            *val /= first_config.get_n_points() as f64;
+        for (val, val2) in izip!(&mut spectral_density, &mut spectral_density_squared) {
+            let n_points = first_config.get_n_points() as f64;
+            *val /= n_points;
+            *val2 /= n_points*n_points;
         }
     } else {
-        for val in &mut spectral_density {
+        for (val, val2) in izip!(&mut spectral_density, &mut spectral_density_squared) {
+            let vol = first_config.get_vol();
             *val /= first_config.get_vol();
+            *val2 /= vol*vol;
         }
     }
 
 
     // Normalize by number of realizations
+    // Spectral density vector now contains final value
     let n_ens = opt.infiles.len() as f64;
     for val in &mut spectral_density {
         *val /= n_ens;
     }
 
+    // Compute std error of mean
+    // Similar to what Ge uses, but
+    // a little different once angularly averaged
+    let mut sigma = vec![0.0; support.len()];
+    for (s, val2, o) in izip!(&spectral_density, &spectral_density_squared, &mut sigma) {
+        *o = ((*val2 - n_ens*s*s)/(n_ens - 1.0)).sqrt();
+        *o /= n_ens.sqrt();
+    }
+
     write_results(&*first_config,
                   &spectral_density,
+                  &sigma,
                   &support,
                   &opt
     );

@@ -134,9 +134,7 @@ impl Config for EllipsoidConfig<U3> {
         U3::to_usize()
     }
 
-    fn one_wavevector(&self,
-                      q: &[f64],
-                      val: &mut f64)
+    fn one_wavevector(&self, q: &[f64]) -> f64
     {
         let mut real: f64 = 0.0;
         let mut imag: f64 = 0.0;
@@ -147,12 +145,10 @@ impl Config for EllipsoidConfig<U3> {
             real += dot.cos() * ellipsoid_factor(q, &p[3..10]);
             imag += dot.sin() * ellipsoid_factor(q, &p[3..10]);
         }
-        *val += real*real + imag*imag;
+        real*real + imag*imag
     }
 
-    fn sf_one_wavevector(&self,
-                         q: &[f64],
-                         val: &mut f64)
+    fn sf_one_wavevector(&self, q: &[f64]) -> f64
     {
         let mut real: f64 = 0.0;
         let mut imag: f64 = 0.0;
@@ -163,7 +159,7 @@ impl Config for EllipsoidConfig<U3> {
             real += dot.cos();
             imag += dot.sin();
         }
-        *val += real*real + imag*imag;
+        real*real + imag*imag
     }
 
     fn get_n_points(&self) -> usize {
