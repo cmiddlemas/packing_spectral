@@ -1,0 +1,223 @@
+#!/usr/bin/env python3
+"""
+bin_sf_stealthy_2d
+
+Script to take angular averages of the structure factor by binning
+
+Written for 2d stealthy systems, aware of K and constraint structure
+for square and triangular reciprocal lattices
+
+usage: bin_sf_stealthy_2d [options] n_bins multiple constraint_file
+anisotropic_structure_file > outfile
+
+lattice = "square" or "triangular" = will do consistency check on constraints
+file with theta series
+    else do nothing
+n_bins = number of bins to use for k < K
+multiple = bin up to k = multiple*K
+constraints file = text file encoding constraint wavevectors
+anisotropic S(k) file = text file containing output of packing_spectral
+
+output: the angularly averaged spectral density on stdout
+with format:
+
+k S(k) uncertainty
+
+k is taken at the midpoint of each bin
+
+options:
+    -h, --help : print this info
+    --square: Do a theta series consistency check with a square reciprocal
+              lattice
+    --triangular: Do a theta series consistency check with a triangular
+                  reciprocal lattice
+    --auto: Ignore given n_bins and multiple, choosing based on input file
+            with heuristic smallest bin_width such that bin_width >= 2*k_min
+            and k_max = k_min*max_vec
+"""
+
+import sys
+import numpy as np
+import math
+
+# Theta data
+theta_square = [4, 4, 0, 4, 8, 0, 0, 4, 4, 8, 0, 0, 8, 0, 0, 4, 8, 4, 0, 8, 0,
+            0, 0, 0, 12, 8, 0, 0, 8, 0, 0, 4, 0, 8, 0, 4, 8, 0, 0, 8, 8, 0, 0,
+            0, 8, 0, 0, 0, 4, 12, 0, 8, 8, 0, 0, 0, 0, 8, 0, 0, 8, 0, 0, 4, 16,
+            0, 0, 8, 0, 0, 0, 4, 8, 8, 0, 0, 0, 0, 0, 8, 4, 8, 0, 0, 16, 0, 0,
+            0, 8, 8, 0, 0, 0, 0, 0, 0, 8, 4, 0, 12, 8]
+
+# Compares the given sorted list of constraints to hard
+# coded and exact theta data from OEIS A004018
+# TODO: need more like 1000 coefficients in order to cover all
+# my use cases, but this suffices for testing the principle
+# start from n = 1
+def compare_to_theta(constraints, lattice_type):
+    if lattice_type == "square":
+        theta = [x//2 for x in theta_square]
+    else:
+        print("Not implemented", file=sys.stderr)
+        sys.exit(-1)
+    
+    running_idx = 0
+    lowest_unconstrained_idx = -1
+    for (i, term) in enumerate(theta):
+        first = constraints[running_idx]
+        predicted_first = constraints[0]*np.sqrt(float(i+1))
+        if abs((first-predicted_first)/first > 1e-8) and term > 0:
+            print("Loss of precision in predictions, can't check theta",
+                    file=sys.stderr)
+            print(first, file=sys.stderr)
+            print(predicted_first, file=sys.stderr)
+            print(constraints, file=sys.stderr)
+            sys.exit(-1)
+        predicted_next = constraints[0]*np.sqrt(float(i+2))
+        for j in range(term):
+            current = constraints[running_idx]
+            if abs((current - first)/(current - predicted_next)) > 1e-5:
+                print("Problem in theta checking", file=sys.stderr)
+                print(constraints, file=sys.stderr)
+                print(current, file=sys.stderr)
+                print(first, file=sys.stderr)
+                print(current-first, file=sys.stderr)
+                print(predicted_next, file=sys.stderr)
+                sys.exit(-1)
+            running_idx += 1
+        if running_idx == len(constraints): # Successful
+            k = 1
+            while lowest_unconstrained_idx < 0:
+                if theta[k] > 0:
+                    lowest_unconstrained_idx = i + j
+                k += 1
+            break
+        if i == len(theta) - 1:
+            print("Too small of a theta list", file=sys.stderr)
+            sys.exit(-1)
+    
+    first_unconstrained = np.sqrt(float(lowest_unconstrained_idx + 1))*constraints[0]
+    if constraints[-1] <= first_unconstrained:
+        print("Loss of precision when calculating K, need to investigate",
+                file=sys.stderr)
+        sys.exit(-1)
+    
+    return (constraints[-1] + first_unconstrained)/2.0
+
+# Basic structure of program:
+# First figure out binning structure based on constraint input file
+# Then bin the data in anisotropic structure file propagating uncertainty
+if __name__ == "__main__":
+    # Parse command line
+    # Options
+    check_square = False
+    check_triangular = False
+    auto_bin = False
+    if "--help" in sys.argv or "-h" in sys.argv or len(sys.argv) == 1:
+        print(__doc__)
+        sys.exit()
+    if "--square" in sys.argv:
+        sys.argv.remove("--square")
+        check_square = True
+    if "--triangular" in sys.argv:
+        sys.argv.remove("--triangular")
+        check_triangular = True
+    if check_triangular and check_square:
+        print("Can only check one type of reciprocal lattice!", file=sys.stderr)
+        sys.exit(-1)
+    if "--auto" in sys.argv:
+        sys.argv.remove("--auto")
+        auto_bin = True
+    # Positional arguments
+    n_bins = int(sys.argv[1])
+    multiple = float(sys.argv[2])
+    constraint_file = open(sys.argv[3])
+    structure_file = open(sys.argv[4])
+
+    # Read in reciprocal cell information
+    max_vec = float(structure_file.readline())
+    unit_cell = []
+    for i in range(2):
+        array = [float(x) for x in structure_file.readline().split()]
+        unit_cell.append(np.array(array))
+    
+    # Compute the minimum |k|
+    norm_unit_cell = [np.linalg.norm(i*unit_cell[0] + j*unit_cell[1])
+        for i in range(-1,2)
+        for j in range(-1,2)]
+    norm_unit_cell.remove(0.0)
+    k_min = min(norm_unit_cell) # minimum |k|
+
+    # Compute the value of K (k_cutoff) using constraint file and do a consistency check
+    # with theta series
+    constraints = np.loadtxt(constraint_file)
+    norm_constraints = np.sqrt(constraints[:,0]**2 + constraints[:,1]**2)
+    sorted_norm_constraints = np.sort(norm_constraints)
+    # Compute cutoff value K as (last_constrained_k + first_unconstrained_k)/2.0
+    # when square or triangular, since that's easy to compute while checking
+    # for theta consistency, thus establishing a strong binning
+    # contract
+    # Otherwise, set cutoff by heuristically extending a small amount
+    # past last_constrained_k, not necessarily establishing the same
+    # strong contract, but probably good enough
+    k_cutoff = 0.0
+    if check_square: # TODO: implement theta checking
+        k_cutoff = compare_to_theta(sorted_norm_constraints, "square")
+    elif check_triangular:
+        k_cutoff = compare_to_theta(sorted_norm_constraints, "triangular")
+    else:
+        k_cutoff = sorted_norm_constraints[-1]
+        k_cutoff += 1e-10 * k_cutoff
+
+    if auto_bin: # --auto, ignore given n_bins and multiple
+        n_bins = int(k_cutoff/(2.0*k_min))
+        while (k_cutoff/float(n_bins))*0.5 < k_min:
+            print("Too close to exactly k_step = 2.0 k_min and causing FP \
+            precision problems, so incrementing n_bins", file=sys.stderr)
+            n_bins += 1
+        multiple = (k_min*max_vec)/k_cutoff
+    
+    # Construct binning data structures based on K
+    # and n_bins
+    # Important note: using k_step based binning, so if we have nearly
+    # degenerate theta data at this point, floating point error
+    # could result in the violation of the contract that all constrained
+    # wavevectors lie below K, and all unconstrained lie above.
+    # However, at that point, this would likely mean little in
+    # terms of the actual computed values
+    k_step = k_cutoff/float(n_bins) # n_bins gives number of bins up to K
+    total_n_bins = int(multiple*k_cutoff/k_step)
+    s_k = np.zeros(total_n_bins) # Values of the structure factor
+    n_samples = np.zeros(total_n_bins)
+    uncertainty = np.zeros(total_n_bins)
+    k_domain = np.array([(x+0.5)*k_step for x in range(total_n_bins)])
+
+    # Check that our input file has enough data to compute
+    # up to requested domain
+    if (max_vec*k_min)/k_cutoff < multiple:
+        print("Cannot continue, use smaller multiple or compute more wavevectors", file=sys.stderr)
+        sys.exit(-1)
+    # Check that we are not requesting too fine a binning
+    if k_step*0.5 < k_min:
+        print("Cannot continue, use smaller number of bins", file=sys.stderr)
+        sys.exit(-1)
+
+    # Now bin the data
+    data = np.loadtxt(structure_file)
+    for k_point in data:
+        k = np.linalg.norm(k_point[0:2])
+        if k < 0.00001*k_min: # exclude forward scattering
+            continue
+        index = int(k/k_step)
+        if index < total_n_bins:
+            s_k[index] += k_point[2]
+            uncertainty[index] += k_point[3]*k_point[3]
+            n_samples[index] += 1.0
+    # normalize structure factor
+    s_k /= n_samples
+    # normalize uncertainty
+    uncertainty = np.sqrt(uncertainty)
+    uncertainty /= n_samples
+
+    # Write out
+    outarray = np.transpose(np.array([k_domain, s_k, uncertainty]))
+    np.savetxt(sys.stdout.buffer, outarray)
+
