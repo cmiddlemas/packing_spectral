@@ -2,13 +2,13 @@ use std::path::PathBuf;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use crate::{form_factor3, reciprocal_lattice3, volume3, Config};
-use typenum::{U3, Unsigned, NonZero};
+use nalgebra::{U3, DimName};
 use std::marker::PhantomData;
 use nalgebra::{Quaternion, UnitQuaternion, Point3};
 
 // Holds arbitrary ellipsoids
 #[derive(Debug)]
-pub struct EllipsoidConfig<T: Unsigned + NonZero> {
+pub struct EllipsoidConfig<T: DimName> {
     pub n_points: usize,
     // Storage convention:
     // coord    rotation    axes
@@ -35,7 +35,7 @@ impl EllipsoidConfig<U3> {
             .next().unwrap()
             .parse()
             .expect("parse dim failed");
-        assert!(dim == U3::to_usize());
+        assert!(dim == U3::dim());
 
         // Get number of points
         bufr.read_line(&mut bufs).expect("io line error");
@@ -131,7 +131,7 @@ impl Config for EllipsoidConfig<U3> {
     }
     
     fn get_dimension(&self) -> usize {
-        U3::to_usize()
+        U3::dim()
     }
 
     fn one_wavevector(&self, q: &[f64]) -> f64

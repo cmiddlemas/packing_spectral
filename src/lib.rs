@@ -4,7 +4,7 @@ use nalgebra::{Matrix2, Vector2, Matrix3, Vector3};
 use std::fs::File;
 use std::io::{BufRead, BufReader, Write, BufWriter};
 use rayon::prelude::*;
-use typenum::{U2, U3};
+use nalgebra::{U2, U3};
 use itertools::izip;
 
 mod sphere;
@@ -55,6 +55,11 @@ pub struct Opt {
     /// unit cells, and number of spheres)
     #[structopt(name = "infile", parse(from_os_str))]
     pub infiles: Vec<PathBuf>,
+
+    /// If given, will assume input file is of the asc_monte_carlo type.
+    /// If not given, will assume input file is of the Donev type
+    #[structopt(long)]
+    pub asc: bool,
 }
 
 // Traits --------------------------------------------------------
@@ -312,7 +317,8 @@ fn write_results(
 }
        
 //https://users.rust-lang.org/t/sending-trait-objects-between-threads/2374
-fn parse_config(path: &PathBuf) -> Box<dyn Config + Sync> {
+fn parse_config(path: &PathBuf, opt: &Opt) -> Box<dyn Config + Sync> {
+    // Get first line of file
     let mut bufs = String::new();
 
     {   
@@ -325,16 +331,27 @@ fn parse_config(path: &PathBuf) -> Box<dyn Config + Sync> {
 
     let tokens: Vec<&str> = bufs.split_whitespace().collect();
 
-    if tokens[0] == "3" && tokens[1] == "HS" {
-        //https://stackoverflow.com/questions/44483876/update-to-rust-1-18-broke-compilation-e0034-multiple-applicable-items-in-scope
-        //https://doc.rust-lang.org/book/ch19-03-advanced-traits.html
-        Box::new(<SphereConfig<U3>>::from_file(path))
-    } else if tokens[0] == "2" && tokens[1] == "HS" {
-        Box::new(<SphereConfig<U2>>::from_file(path))
-    } else if tokens[0] == "3" && tokens[1] == "HE" {
-        Box::new(<EllipsoidConfig<U3>>::from_file(path))
+    // Determine if file is asc type or Donev type
+    if opt.asc {
+        if tokens[2] == "Sphere" {
+            Box::new(<SphereConfig<U3>>::from_file_asc(path))
+        } else if tokens[2] == "Disk" {
+            Box::new(<SphereConfig<U2>>::from_file_asc(path))
+        } else {
+            unimplemented!()
+        }
     } else {
-        panic!("Haven't implemented that dimension/shape");
+        if tokens[0] == "3" && tokens[1] == "HS" {
+            //https://stackoverflow.com/questions/44483876/update-to-rust-1-18-broke-compilation-e0034-multiple-applicable-items-in-scope
+            //https://doc.rust-lang.org/book/ch19-03-advanced-traits.html
+            Box::new(<SphereConfig<U3>>::from_file(path))
+        } else if tokens[0] == "2" && tokens[1] == "HS" {
+            Box::new(<SphereConfig<U2>>::from_file(path))
+        } else if tokens[0] == "3" && tokens[1] == "HE" {
+            Box::new(<EllipsoidConfig<U3>>::from_file(path))
+        } else {
+            unimplemented!()
+        }
     }
 }
 
@@ -344,7 +361,7 @@ pub fn spectral_density_cmdline(opt: &Opt) {
     // Decide the type and dimension
     // of given input files
 
-    let first_config = parse_config(&opt.infiles[0]);
+    let first_config = parse_config(&opt.infiles[0], opt);
             
     // Initialize data structure
     let support = make_support(
@@ -359,7 +376,7 @@ pub fn spectral_density_cmdline(opt: &Opt) {
     // Ensemble sum
     for (i, path) in opt.infiles.iter().enumerate() {
         println!("Processing file: {}", i);
-        let config = parse_config(path);
+        let config = parse_config(path, opt);
         one_configuration(&*config,
                            &mut spectral_density,
                            &mut spectral_density_squared,

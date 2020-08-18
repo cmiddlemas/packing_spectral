@@ -7,11 +7,12 @@ use crate::{
         reciprocal_lattice2, volume2,
         Config
 };
-use typenum::{U2, U3, Unsigned, NonZero};
+use nalgebra::{U2, U3, DimName};
 use std::marker::PhantomData;
+use nalgebra::{Matrix2, Vector2, Matrix3, Vector3};
 
 #[derive(Debug)]
-pub struct SphereConfig<T: Unsigned + NonZero> { // T is dimension
+pub struct SphereConfig<T: DimName> { // T is dimension
     pub n_points: usize,
     // Coordinates + radius, flat storage:
     // x1 y1 z1 R1 x2 y2 z2 R2 ...
@@ -24,11 +25,97 @@ pub struct SphereConfig<T: Unsigned + NonZero> { // T is dimension
     phantom: PhantomData<T>,
 }
 
+// General code ---------------------------------------------------
+
+impl<T: DimName> SphereConfig<T> {
+    pub fn from_file_asc(path: &PathBuf) -> SphereConfig<T> {
+        // Get the dimension from type info
+        let dim = T::dim();
+        
+        // Prepare to read file line by line
+        let mut bufr = BufReader::new(File::open(path)
+                                  .expect("io error")
+        );
+        let mut bufs = String::new();
+
+        // Read and check dimension against type info
+        bufr.read_line(&mut bufs).unwrap();
+        let dim_check: usize = bufs.trim().split_whitespace()
+                      .next().unwrap()
+                      .parse().unwrap();
+        assert!(dim_check == dim);
+        bufs.clear();
+        
+        // Read unit cell
+        bufr.read_line(&mut bufs).unwrap();
+        let unit_cell: Vec<f64> = bufs.trim().split_whitespace()
+                            .map(|x| x.parse().unwrap())
+                            .collect();
+        bufs.clear();
+        
+        // Read particle list
+        let mut config: Vec<f64> = Vec::new();
+        let mut n_points = 0;
+        // Decided to do it this way because generics are hard
+        // https://stackoverflow.com/questions/53225972/how-do-i-create-a-struct-containing-a-nalgebra-matrix-with-higher-dimensions
+        // https://github.com/rustsim/nalgebra/issues/580
+        // https://discourse.nphysics.org/t/using-nalgebra-in-generics/90
+        match dim {
+            2 => {
+                let cell_mat = Matrix2::from_column_slice(&unit_cell);
+                for line in bufr.lines() {
+                    n_points += 1;
+                    let rel_coord: Vec<f64> = line.unwrap()
+                                                  .trim()
+                                                  .split_whitespace()
+                                                  .map(|x| x.parse().unwrap())
+                                                  .collect();
+                    let rel_coord_vect = Vector2::from_column_slice(&rel_coord[0..dim]);
+                    let global_coord_vect = cell_mat*rel_coord_vect;
+                    config.extend_from_slice(global_coord_vect.as_slice());
+                    config.push(rel_coord[dim]);
+                }
+            }
+            3 => {
+                let cell_mat = Matrix3::from_column_slice(&unit_cell);
+                for line in bufr.lines() {
+                    n_points += 1;
+                    let rel_coord: Vec<f64> = line.unwrap()
+                                                  .trim()
+                                                  .split_whitespace()
+                                                  .map(|x| x.parse().unwrap())
+                                                  .collect();
+                    let rel_coord_vect = Vector3::from_column_slice(&rel_coord[0..dim]);
+                    let global_coord_vect = cell_mat*rel_coord_vect;
+                    config.extend_from_slice(global_coord_vect.as_slice());
+                    config.push(rel_coord[dim]);
+                }
+            }
+            _ => unimplemented!(),
+        }
+
+        // Compute other fields
+        let vol = match dim {
+            2 => volume2(&unit_cell),
+            3 => volume3(&unit_cell),
+            _ => unimplemented!(),
+        };
+        
+        let reciprocal_cell = match dim {
+            2 => reciprocal_lattice2(&unit_cell),
+            3 => reciprocal_lattice3(&unit_cell),
+            _ => unimplemented!(),
+        };
+
+        SphereConfig { n_points, config, unit_cell, vol, reciprocal_cell, phantom: PhantomData }
+    }
+}
+
 // 2D Code --------------------------------------------------------
 
 impl SphereConfig<U2> {
     pub fn from_file(path: &PathBuf) -> SphereConfig<U2> {
-        let dim = U2::to_usize();
+        let dim = U2::dim();
         let mut bufr = BufReader::new(File::open(path)
                                   .expect("io error")
         );
@@ -105,7 +192,7 @@ impl Config for SphereConfig<U2> {
         real*real + imag*imag
     }
     
-    fn get_dimension(&self) -> usize { U2::to_usize() }
+    fn get_dimension(&self) -> usize { U2::dim() }
     
     fn get_n_points(&self) -> usize { self.n_points }
     
@@ -118,7 +205,7 @@ impl SphereConfig<U3> {
     // Thanks to 
     // https://users.rust-lang.org/t/read-a-file-line-by-line/1585
     pub fn from_file(path: &PathBuf) -> SphereConfig<U3> {
-        let dim = U3::to_usize();
+        let dim = U3::dim();
         let mut bufr = BufReader::new(File::open(path)
                                   .expect("io error")
         );
@@ -218,7 +305,7 @@ impl Config for SphereConfig<U3> {
     }
 
     fn get_dimension(&self) -> usize {
-        U3::to_usize()
+        U3::dim()
     }
 
     fn get_n_points(&self) -> usize {
